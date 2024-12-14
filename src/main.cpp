@@ -1,4 +1,4 @@
-#include <shared_mutex> // Добавляем этот заголовок
+#include <shared_mutex>
 #include <thread>
 #include <mutex>
 #include <condition_variable>
@@ -13,22 +13,20 @@
 #include "NPCFactory.hpp"
 #include "NPCSaver.hpp"
 #include "NPCLoader.hpp"
-#include "ElfFactory.hpp" // Добавляем заголовки фабрик
+#include "ElfFactory.hpp"
 #include "DruidFactory.hpp"
 #include "DragonFactory.hpp"
 
-// Объявления мьютексов и очереди боев
 std::shared_mutex npc_mutex;
 std::mutex cout_mutex;
 std::mutex battle_queue_mutex;
 std::condition_variable battle_condition;
 std::queue<std::pair<NPC*, NPC*>> battle_tasks;
 
-// Поток для перемещения NPC
 void movement_thread_func(std::vector<std::unique_ptr<NPC>>& npcs, int map_width, int map_height, int killing_range) {
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(-5, 5); // Диапазон перемещения
+    std::uniform_int_distribution<> dis(-5, 5);
 
     while (true) {
         std::shared_lock<std::shared_mutex> lock(npc_mutex);
@@ -40,7 +38,6 @@ void movement_thread_func(std::vector<std::unique_ptr<NPC>>& npcs, int map_width
                 npc->setY(std::max(0, std::min(map_height, new_y)));
             }
         }
-        // Проверка на возможность боя
         for (size_t i = 0; i < npcs.size(); ++i) {
             if (!npcs[i] || !npcs[i]->isAlive()) continue;
             for (size_t j = i + 1; j < npcs.size(); ++j) {
@@ -58,7 +55,6 @@ void movement_thread_func(std::vector<std::unique_ptr<NPC>>& npcs, int map_width
     }
 }
 
-// Поток для обработки боев
 void battle_thread_func(std::vector<std::unique_ptr<NPC>>& npcs) {
     while (true) {
         std::unique_lock<std::mutex> battle_lock(battle_queue_mutex);
@@ -85,13 +81,10 @@ int main() {
     const int MAP_HEIGHT = 100;
     const int KILLING_RANGE = 10;
     std::vector<std::unique_ptr<NPC>> npcs;
-
-    // Регистрация фабрик NPC
     NPCFactory::registerFactory("Druid", new DruidFactory());
     NPCFactory::registerFactory("Elf", new ElfFactory());
     NPCFactory::registerFactory("Dragon", new DragonFactory());
 
-    // Инициализация 50 NPC в случайных локациях
     std::srand(std::time(0));
     for (int i = 0; i < 50; ++i) {
         int type_rand = std::rand() % 3;
@@ -107,18 +100,15 @@ int main() {
         npcs.emplace_back(NPCFactory::create(type, name, x, y));
     }
 
-    // Запуск потоков
     std::thread movement_thread(movement_thread_func, std::ref(npcs), MAP_WIDTH, MAP_HEIGHT, KILLING_RANGE);
     std::thread battle_thread(battle_thread_func, std::ref(npcs));
 
-    // Основной цикл
     auto start_time = std::chrono::high_resolution_clock::now();
     while (true) {
         auto current_time = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time).count();
         if (elapsed >= 30) break;
 
-        // Печать карты
         std::shared_lock<std::shared_mutex> lock(npc_mutex);
         std::lock_guard<std::mutex> cout_lock(cout_mutex);
         std::cout << "Карта на " << elapsed << " секунд:\n";
@@ -129,12 +119,9 @@ int main() {
         }
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
-
-    // Ожидание завершения потоков
     movement_thread.join();
     battle_thread.join();
 
-    // Печать выживших
     std::lock_guard<std::mutex> cout_lock(cout_mutex);
     std::cout << "Выжившие:\n";
     for (const auto& npc : npcs) {
